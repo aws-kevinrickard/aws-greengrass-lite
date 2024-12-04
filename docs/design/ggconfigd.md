@@ -245,3 +245,24 @@ just like you can't write/merge a value onto an existing map/object.
 
 Writing an empty map doesn't trigger any update subscription callbacks, because
 no values were written to notify on.
+
+### (Not) considering timestamps when deleting keys
+
+With GG Classic, if deployments that reset (delete) parts of the config are
+applied out of order, they can result in a different resulting config state, and
+deployment ordering behavior does not apply to configs which were deleted.
+Config deletes are always applied at the time of deployment processing. This is
+because with GG classic, deleted keys do not have any state (notably a timestamp
+of a potential previous deletion) associated with them, and timestamps are not
+checked before resetting config keys. Lite replicates this, and also does not
+store any state about deleted keys currently.
+
+In the future it would be good to add in this deleted-key state with the
+associated timestamp, and check timestamps before deleting keys. This would
+result in deployment ordering behavior being preserved and make GG configuration
+more consistent, simpler to understand, and less likely to cause application
+bugs. And it would also set us up for improving the
+[Subscription behavior for keys which become deleted](#subscription-behavior-for-keys-which-become-deleted).
+However it may be a breaking change from a Greengrass behavior perspective, and
+will need careful consideration in how to make this improvement without
+disturbing existing applications which may depend on it for some reason.

@@ -291,6 +291,50 @@ static void test_get(
     }
 }
 
+static void test_delete(GglList key_path, GglError expected_result) {
+    GGL_LOGD(
+        "test_delete %s, expecting %s",
+        print_key_path(&key_path),
+        ggl_strerror(expected_result)
+    );
+    GglBuffer server = GGL_STR("gg_config");
+
+    GglMap params = GGL_MAP({ GGL_STR("key_path"), GGL_OBJ_LIST(key_path) }, );
+
+    GglError remote_error = GGL_ERR_OK;
+    GglError error = ggl_call(
+        server, GGL_STR("delete"), params, &remote_error, NULL, NULL
+    );
+    if (expected_result != GGL_ERR_OK && error != GGL_ERR_REMOTE) {
+        GGL_LOGE(
+            "delete key %s expected result %s but there was not a remote error",
+            print_key_path(&key_path),
+            ggl_strerror(expected_result)
+        );
+        assert(0);
+    }
+    if (expected_result == GGL_ERR_OK && error != GGL_ERR_OK) {
+        GGL_LOGE(
+            "delete key %s did not expect error but got error %s and remote "
+            "error %s",
+            print_key_path(&key_path),
+            ggl_strerror(error),
+            ggl_strerror(remote_error)
+        );
+        assert(0);
+    }
+    if (remote_error != expected_result) {
+        GGL_LOGE(
+            "delete key %s expected result %s but got %s",
+            print_key_path(&key_path),
+            ggl_strerror(expected_result),
+            ggl_strerror(remote_error)
+        );
+        assert(0);
+        return;
+    }
+}
+
 static GglError subscription_callback(
     void *ctx, unsigned int handle, GglObject data
 ) {
@@ -899,6 +943,68 @@ int main(int argc, char **argv) {
         GGL_ERR_OK
     );
 
+    // Test to ensure a key can be deleted, not affecting its parent
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component13")), GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_BUF(GGL_STR("value")),
+        -1,
+        GGL_ERR_OK
+    );
+    test_delete(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component13")), GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_ERR_OK
+    );
+    test_get(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component13")), GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_NULL(),
+        GGL_ERR_NOENTRY
+    );
+    test_get(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component13"))),
+        GGL_OBJ_MAP(GGL_MAP()),
+        GGL_ERR_OK
+    );
+
+    // Test to ensure deletes are recursive
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component14")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("bar"))
+        ),
+        GGL_OBJ_BUF(GGL_STR("value")),
+        -1,
+        GGL_ERR_OK
+    );
+    test_delete(GGL_LIST(GGL_OBJ_BUF(GGL_STR("component14"))), GGL_ERR_OK);
+    test_get(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component14")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("bar"))
+        ),
+        GGL_OBJ_NULL(),
+        GGL_ERR_NOENTRY
+    );
+    test_get(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component14")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_NULL(),
+        GGL_ERR_NOENTRY
+    );
+    test_get(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component14"))),
+        GGL_OBJ_NULL(),
+        GGL_ERR_NOENTRY
+    );
+
     // Test to ensure an empty map can be written and read
     test_insert(
         GGL_LIST(GGL_OBJ_BUF(GGL_STR("component15"))),
@@ -1003,6 +1109,55 @@ int main(int argc, char **argv) {
         -1,
         GGL_ERR_FAILURE
     );
+
+    // Test to check subscriber behavior on deleted keys
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component20")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_BUF(GGL_STR("value1")),
+        -1,
+        GGL_ERR_OK
+    );
+    test_subscribe(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component20")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_ERR_OK
+    );
+    test_subscribe(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component20")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_ERR_OK
+    );
+    test_delete(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component20")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_ERR_OK
+    );
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component20")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_BUF(GGL_STR("value2")),
+        -1,
+        GGL_ERR_OK
+    ); // Should see one `read component20/foo/key` on the callback handle
+       // created for component20/foo
+    // Currently, the other subscription callback for component20/foo/key is not
+    // notified. In the future, it would be good to have that behavior too. See
+    // the docs/design/ggconfigd.md section "Subscription behavior for keys
+    // which become deleted" for more info.
 
     // test_insert(
     //     GGL_LIST(GGL_OBJ_BUF(GGL_STR("component")),
