@@ -44,6 +44,34 @@ GglError ggl_gg_config_read(
     return err;
 }
 
+GglError ggl_gg_config_delete(GglBufList key_path) {
+    if (key_path.len > GGL_MAX_OBJECT_DEPTH) {
+        GGL_LOGE("Key path depth exceeds maximum handled.");
+        return GGL_ERR_UNSUPPORTED;
+    }
+
+    GglObject path_obj[GGL_MAX_OBJECT_DEPTH] = { 0 };
+    for (size_t i = 0; i < key_path.len; i++) {
+        path_obj[i] = GGL_OBJ_BUF(key_path.bufs[i]);
+    }
+
+    GglMap args = GGL_MAP(
+        { GGL_STR("key_path"),
+          GGL_OBJ_LIST((GglList) { .items = path_obj, .len = key_path.len }) },
+    );
+
+    GglError remote_err = GGL_ERR_OK;
+    GglError err = ggl_call(
+        GGL_STR("gg_config"), GGL_STR("delete"), args, &remote_err, NULL, NULL
+    );
+
+    if ((err == GGL_ERR_REMOTE) && (remote_err != GGL_ERR_OK)) {
+        err = remote_err;
+    }
+
+    return err;
+}
+
 GglError ggl_gg_config_read_str(GglBufList key_path, GglBuffer *result) {
     GglObject result_obj;
     GglBumpAlloc alloc = ggl_bump_alloc_init(*result);

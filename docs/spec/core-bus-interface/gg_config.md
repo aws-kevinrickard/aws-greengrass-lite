@@ -64,8 +64,9 @@ The `write` method does not have a response value.
 
 ## delete
 
-The `delete` method removes the key and value associated with `key_path`. If the
-value is a map with subkeys, everything under it is also deleted recursively.
+The `delete` method removes the key and value associated with `key_path`, if
+present. If the value is a map with subkeys, everything under it is also deleted
+recursively. If the key does not exist, nothing happens.
 
 - [gg-config-delete-1] `delete` can be invoked with call or notify.
 
@@ -80,7 +81,8 @@ value is a map with subkeys, everything under it is also deleted recursively.
 The `delete` method does not have a response value.
 
 - [gg-config-delete-resp-1] If the method returns without an error, the
-  configuration has been successfully deleted.
+  configuration key does not exist, either because it was deleted or it didn't
+  exist when the call was made.
 
 ## subscribe
 

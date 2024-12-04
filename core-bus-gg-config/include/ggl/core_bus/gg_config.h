@@ -28,6 +28,9 @@ GglError ggl_gg_config_write(
     GglBufList key_path, GglObject value, const int64_t *timestamp
 );
 
+/// Wrapper for core-bus `gg_config` `delete`
+GglError ggl_gg_config_delete(GglBufList key_path);
+
 /// Wrapper for core-bus `gg_config` `subscribe`
 GglError ggl_gg_config_subscribe(
     GglBufList key_path,
