@@ -649,6 +649,66 @@ static GglError notify_nested_key(GglList *key_path, GglObjVec key_ids) {
     return return_err;
 }
 
+GglError ggconfig_write_empty_map(GglList *key_path) {
+    if (config_initialized == false) {
+        GGL_LOGE("Database not initialized");
+        return GGL_ERR_FAILURE;
+    }
+
+    sqlite3_exec(config_database, "BEGIN TRANSACTION", NULL, NULL, NULL);
+    GGL_LOGT(
+        "Starting transaction to write an empty map to key %s",
+        print_key_path(key_path)
+    );
+
+    GglObject ids_array[GGL_MAX_OBJECT_DEPTH];
+    GglObjVec ids = { .list = { .items = ids_array, .len = 0 },
+                      .capacity = GGL_MAX_OBJECT_DEPTH };
+    int64_t last_key_id;
+    GglError err = get_key_ids(key_path, &ids);
+    if (err == GGL_ERR_NOENTRY) {
+        ids.list.len = 0; // Reset the ids vector to be populated fresh
+        err = create_key_path(key_path, &ids);
+        if (err != GGL_ERR_OK) {
+            sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+            return err;
+        }
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        return GGL_ERR_OK;
+    }
+    if (err != GGL_ERR_OK) {
+        GGL_LOGE(
+            "Failed to get key ids for key path %s with error %s",
+            print_key_path(key_path),
+            ggl_strerror(err)
+        );
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+        return err;
+    }
+
+    last_key_id = ids.list.items[ids.list.len - 1].i64;
+
+    bool value_is_present;
+    err = value_is_present_for_key(last_key_id, &value_is_present);
+    if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+        return err;
+    }
+    if (value_is_present) {
+        GGL_LOGW(
+            "Value already present for key %s with id %" PRId64
+            ", so an empty map can not be merged. Failing request.",
+            print_key_path(key_path),
+            last_key_id
+        );
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+        return GGL_ERR_FAILURE;
+    }
+
+    sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+    return GGL_ERR_OK;
+}
+
 GglError ggconfig_write_value_at_key(
     GglList *key_path, GglBuffer *value, int64_t timestamp
 ) {
@@ -729,8 +789,20 @@ GglError ggconfig_write_value_at_key(
         return GGL_ERR_FAILURE;
     }
 
-    // we now know that the key already exists and does not have a child.
-    // Therefore, it stores a value currently.
+    bool value_is_present;
+    err = value_is_present_for_key(last_key_id, &value_is_present);
+    if (err != GGL_ERR_OK) {
+        return err;
+    }
+    if (!value_is_present) {
+        GGL_LOGW(
+            "Key %s with id %" PRId64 " is an empty map, so it can not have a "
+            "value written to it. Failing request.",
+            print_key_path(key_path),
+            last_key_id
+        );
+        return GGL_ERR_FAILURE;
+    }
 
     int64_t existing_timestamp;
     err = value_get_timestamp(last_key_id, &existing_timestamp);
@@ -859,15 +931,17 @@ static GglError read_key_recursive(
     while (sqlite3_step(read_children_stmt) == SQLITE_ROW) {
         children_count++;
     }
-    if (children_count == 0) {
-        GGL_LOGE("no value or children keys found for key id %" PRId64, key_id);
-        return GGL_ERR_FAILURE;
-    }
-    GGL_LOGD(
+    GGL_LOGT(
         "the number of children keys for key id %" PRId64 " is %zd",
         key_id,
         children_count
     );
+    if (children_count == 0) {
+        value->type = GGL_TYPE_MAP;
+        value->map.len = 0;
+        GGL_LOGT("value read: empty map for key id %" PRId64, key_id);
+        return GGL_ERR_OK;
+    }
 
     // create the kvs for the children
     GglKV *kv_buffer = GGL_ALLOCN(alloc, GglKV, children_count);

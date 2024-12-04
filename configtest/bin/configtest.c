@@ -899,6 +899,111 @@ int main(int argc, char **argv) {
         GGL_ERR_OK
     );
 
+    // Test to ensure an empty map can be written and read
+    test_insert(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component15"))),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_OK
+    );
+    test_get(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component15"))),
+        GGL_OBJ_MAP(GGL_MAP()),
+        GGL_ERR_OK
+    );
+
+    // Test to ensure an empty map can be merged into an existing empty map
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component16")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_OK
+    );
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component16")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_OK
+    );
+    test_get(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component16")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP()),
+        GGL_ERR_OK
+    );
+
+    // Test to ensure an empty map can be merged into an existing populated map
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component17")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP({ GGL_STR("key"), GGL_OBJ_NULL() })),
+        -1,
+        GGL_ERR_OK
+    );
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component17")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_OK
+    );
+    test_get(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component17")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP({ GGL_STR("key"), GGL_OBJ_NULL() })),
+        GGL_ERR_OK
+    );
+
+    // Test to ensure an empty map can not be merged into an existing value
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component18")), GGL_OBJ_BUF(GGL_STR("foo"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP({ GGL_STR("key"), GGL_OBJ_NULL() })),
+        -1,
+        GGL_ERR_OK
+    );
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component18")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_FAILURE
+    );
+
+    // Test to ensure an value can not be merged into an existing empty map
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component19")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_OK
+    );
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component19")),
+            GGL_OBJ_BUF(GGL_STR("foo")),
+            GGL_OBJ_BUF(GGL_STR("key"))
+        ),
+        GGL_OBJ_NULL(),
+        -1,
+        GGL_ERR_FAILURE
+    );
+
     // test_insert(
     //     GGL_LIST(GGL_OBJ_BUF(GGL_STR("component")),
     //     GGL_OBJ_BUF(GGL_STR("bar"))), GGL_OBJ_MAP(GGL_MAP({ GGL_STR("foo"),

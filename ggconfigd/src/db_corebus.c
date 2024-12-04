@@ -206,6 +206,10 @@ GglError process_nonmap(
 // NOLINTNEXTLINE(misc-no-recursion)
 GglError process_map(GglObjVec *key_path, GglMap *the_map, int64_t timestamp) {
     GglError error = GGL_ERR_OK;
+    if (the_map->len == 0) {
+        GGL_LOGT("Map is empty, merging in.");
+        return ggconfig_write_empty_map(&key_path->list);
+    }
     for (size_t x = 0; x < the_map->len; x++) {
         GglKV *kv = &the_map->pairs[x];
         GGL_LOGT("Preparing %zu, %.*s", x, (int) kv->key.len, kv->key.data);

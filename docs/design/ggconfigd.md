@@ -232,3 +232,16 @@ the future).
      non-existent keys or maintained for keys which become non-existent.
    - B. Have a temp table for pending subscriptions in addition to the active
      subscriptions
+
+### Storing empty maps
+
+Empty maps (or empty objects) are valid JSON, so we need to support them. This
+is represented in the database when a key has neither a value nor any children.
+In other words, if a key doesn't have a value, it is a map/object, and the
+number of children is how many fields are in that map/object, which can be zero.
+
+You can't write/merge a value onto an existing empty map/object or vice versa,
+just like you can't write/merge a value onto an existing map/object.
+
+Writing an empty map doesn't trigger any update subscription callbacks, because
+no values were written to notify on.
