@@ -28,7 +28,7 @@ static GglError decode_object_destructive(
 ) {
     GglError return_err = GGL_ERR_FAILURE;
     if (obj->type == GGL_TYPE_BUF) {
-        GGL_LOGD(
+        GGL_LOGT(
             "given buffer to decode: %.*s", (int) obj->buf.len, obj->buf.data
         );
         GglObject return_object;
@@ -73,7 +73,7 @@ static GglError decode_object_destructive(
             break;
         }
     } else if (obj->type == GGL_TYPE_MAP) {
-        GGL_LOGD("given map to decode with length: %d", (int) obj->map.len);
+        GGL_LOGT("given map to decode with length: %d", (int) obj->map.len);
         for (size_t i = 0; i < obj->map.len; i++) {
             GglError decode_err = decode_object_destructive(
                 &(obj->map.pairs[i].val), bump_alloc
@@ -114,7 +114,9 @@ static GglError rpc_read(void *ctx, GglMap params, uint32_t handle) {
         return GGL_ERR_RANGE;
     }
 
-    GGL_LOGD("reading key %s", print_key_path(&key_path->list));
+    GGL_LOGD(
+        "Processing request to read key %s", print_key_path(&key_path->list)
+    );
 
     GglObject value;
     GglError err = ggconfig_get_value_from_key(&key_path->list, &value);
@@ -148,6 +150,14 @@ static GglError rpc_subscribe(void *ctx, GglMap params, uint32_t handle) {
         GGL_LOGE("key_path elements must be strings.");
         return GGL_ERR_RANGE;
     }
+
+    GGL_LOGD(
+        "Processing request to subscribe handle %" PRIu32 ":%" PRIu32
+        " to key %s",
+        handle & (0xFFFF0000 >> 16),
+        handle & 0x0000FFFF,
+        print_key_path(&key_path->list)
+    );
 
     ret = ggconfig_get_key_notification(&key_path->list, handle);
     if (ret != GGL_ERR_OK) {
@@ -260,7 +270,12 @@ static GglError rpc_write(void *ctx, GglMap params, uint32_t handle) {
         clock_gettime(CLOCK_REALTIME, &now);
         timestamp = (int64_t) now.tv_sec * 1000 + now.tv_nsec / 1000000;
     }
-    GGL_LOGD("Timestamp %." PRId64, timestamp);
+
+    GGL_LOGD(
+        "Processing request to merge a value to key %s with timestamp %" PRId64,
+        print_key_path(&key_path.list),
+        timestamp
+    );
 
     if (value_obj->type == GGL_TYPE_MAP) {
         GglError error = process_map(&key_path, &value_obj->map, timestamp);

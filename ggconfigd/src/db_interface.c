@@ -72,8 +72,13 @@ GglError ggconfig_open(void) {
             GGL_LOGI("Config database Opened");
 
             sqlite3_stmt *stmt;
-            sqlite3_prepare_v2(
-                config_database, GGL_SQL_CHECK_INITALIZED, -1, &stmt, NULL
+            sqlite3_prepare_v2( // TODO: We should be checking the return code
+                                // of each call to prepare
+                config_database,
+                GGL_SQL_CHECK_INITALIZED,
+                -1,
+                &stmt,
+                NULL
             );
             GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
 
@@ -125,7 +130,7 @@ GglError ggconfig_close(void) {
 }
 
 static GglError key_insert(GglBuffer *key, int64_t *id_output) {
-    GGL_LOGD("insert %.*s", (int) key->len, (char *) key->data);
+    GGL_LOGT("insert %.*s", (int) key->len, (char *) key->data);
     sqlite3_stmt *key_insert_stmt;
     sqlite3_prepare_v2(
         config_database, GGL_SQL_KEY_INSERT, -1, &key_insert_stmt, NULL
@@ -144,7 +149,7 @@ static GglError key_insert(GglBuffer *key, int64_t *id_output) {
         return GGL_ERR_FAILURE;
     }
     *id_output = sqlite3_last_insert_rowid(config_database);
-    GGL_LOGD(
+    GGL_LOGT(
         "Insert %.*s result: %" PRId64, (int) key->len, key->data, *id_output
     );
     return GGL_ERR_OK;
@@ -153,7 +158,7 @@ static GglError key_insert(GglBuffer *key, int64_t *id_output) {
 static GglError value_is_present_for_key(
     int64_t key_id, bool *value_is_present_output
 ) {
-    GGL_LOGD("Checking id %" PRId64, key_id);
+    GGL_LOGT("Checking id %" PRId64, key_id);
 
     sqlite3_stmt *find_value_stmt;
     sqlite3_prepare_v2(
@@ -165,7 +170,7 @@ static GglError value_is_present_for_key(
     if (rc == SQLITE_ROW) {
         int64_t pid = sqlite3_column_int(find_value_stmt, 0);
         if (pid) {
-            GGL_LOGD("Id %" PRId64 " does have a value", key_id);
+            GGL_LOGT("Id %" PRId64 " does have a value", key_id);
             *value_is_present_output = true;
             return GGL_ERR_OK;
         }
@@ -175,12 +180,13 @@ static GglError value_is_present_for_key(
         return GGL_ERR_FAILURE;
     }
     if (rc == SQLITE_DONE) {
-        GGL_LOGD("Id %" PRId64 " does not have a value", key_id);
+        GGL_LOGT("Id %" PRId64 " does not have a value", key_id);
         *value_is_present_output = false;
         return GGL_ERR_OK;
     }
     GGL_LOGE(
-        "Checking id %" PRId64 " failed with error: %s",
+        "Checking presence of value for key id %" PRId64
+        " failed with error: %s",
         key_id,
         sqlite3_errmsg(config_database)
     );
@@ -191,7 +197,7 @@ static GglError find_key_with_parent(
     GglBuffer *key, int64_t parent_key_id, int64_t *key_id_output
 ) {
     int64_t id = 0;
-    GGL_LOGD(
+    GGL_LOGT(
         "searching for key %.*s with parent id %" PRId64,
         (int) key->len,
         key->data,
@@ -211,10 +217,10 @@ static GglError find_key_with_parent(
     );
     sqlite3_bind_int64(find_element_stmt, 2, parent_key_id);
     int rc = sqlite3_step(find_element_stmt);
-    GGL_LOGD("find element returned %d", rc);
+    GGL_LOGT("find element returned %d", rc);
     if (rc == SQLITE_ROW) {
         id = sqlite3_column_int(find_element_stmt, 0);
-        GGL_LOGD(
+        GGL_LOGT(
             "found key %.*s with parent id %" PRId64 " at %" PRId64,
             (int) key->len,
             key->data,
@@ -225,7 +231,7 @@ static GglError find_key_with_parent(
         return GGL_ERR_OK;
     }
     if (rc == SQLITE_DONE) {
-        GGL_LOGI(
+        GGL_LOGT(
             "key %.*s with parent id %" PRId64 " not found",
             (int) key->len,
             key->data,
@@ -245,7 +251,7 @@ static GglError find_key_with_parent(
 
 // get or create a keyid where the key is a root (first element of a path)
 static GglError get_or_create_key_at_root(GglBuffer *key, int64_t *id_output) {
-    GGL_LOGD("Checking %.*s", (int) key->len, (char *) key->data);
+    GGL_LOGT("Checking %.*s", (int) key->len, (char *) key->data);
     int64_t id = 0;
 
     sqlite3_stmt *root_check_stmt;
@@ -259,7 +265,7 @@ static GglError get_or_create_key_at_root(GglBuffer *key, int64_t *id_output) {
     int rc = sqlite3_step(root_check_stmt);
     if (rc == SQLITE_ROW) { // exists as a root and here is the id
         id = sqlite3_column_int(root_check_stmt, 0);
-        GGL_LOGD("Found %.*s at %" PRId64, (int) key->len, key->data, id);
+        GGL_LOGT("Found %.*s at %" PRId64, (int) key->len, key->data, id);
     } else if (rc == SQLITE_DONE) { // doesn't exist at root, so we need to
                                     // create the key and get the id
         GglError err = key_insert(key, &id);
@@ -293,7 +299,7 @@ static GglError relation_insert(int64_t id, int64_t parent) {
     sqlite3_bind_int64(relation_insert_stmt, 2, parent);
     int rc = sqlite3_step(relation_insert_stmt);
     if (rc == SQLITE_DONE || rc == SQLITE_OK) {
-        GGL_LOGD(
+        GGL_LOGT(
             "relation insert successful key:%" PRId64 ", parent:%" PRId64,
             id,
             parent
@@ -325,7 +331,7 @@ static GglError value_insert(
     sqlite3_bind_int64(value_insert_stmt, 3, timestamp);
     int rc = sqlite3_step(value_insert_stmt);
     if (rc == SQLITE_DONE || rc == SQLITE_OK) {
-        GGL_LOGD("value insert successful");
+        GGL_LOGT("value insert successful");
         return_err = GGL_ERR_OK;
     } else {
         GGL_LOGE(
@@ -359,7 +365,7 @@ static GglError value_update(
     sqlite3_bind_int64(update_value_stmt, 3, key_id);
     int rc = sqlite3_step(update_value_stmt);
     if (rc == SQLITE_DONE || rc == SQLITE_OK) {
-        GGL_LOGD("value update successful");
+        GGL_LOGT("value update successful");
         return_err = GGL_ERR_OK;
     } else {
         GGL_LOGE(
@@ -401,7 +407,7 @@ static GglError value_get_timestamp(
 // key_ids_output must point to an empty GglObjVec with capacity
 // GGL_MAX_OBJECT_DEPTH
 static GglError get_key_ids(GglList *key_path, GglObjVec *key_ids_output) {
-    GGL_LOGD("searching for %s", print_key_path(key_path));
+    GGL_LOGT("searching for %s", print_key_path(key_path));
 
     sqlite3_stmt *find_element_stmt;
     sqlite3_prepare_v2(
@@ -431,7 +437,7 @@ static GglError get_key_ids(GglList *key_path, GglObjVec *key_ids_output) {
     for (size_t i = 0; i < key_path->len; i++) {
         int rc = sqlite3_step(find_element_stmt);
         if (rc == SQLITE_DONE) {
-            GGL_LOGI(
+            GGL_LOGT(
                 "id not found for key %d in %s",
                 (int) i,
                 print_key_path(key_path)
@@ -448,7 +454,7 @@ static GglError get_key_ids(GglList *key_path, GglObjVec *key_ids_output) {
             return GGL_ERR_FAILURE;
         }
         int64_t id = sqlite3_column_int(find_element_stmt, 0);
-        GGL_LOGD(
+        GGL_LOGT(
             "found id for key %d in %s: %" PRId64,
             (int) i,
             print_key_path(key_path),
@@ -492,7 +498,8 @@ static GglError create_key_path(GglList *key_path, GglObjVec *key_ids_output) {
     }
     if (value_is_present_for_root_key) {
         GGL_LOGW(
-            "value already present for root key %.*s with id %" PRId64,
+            "value already present for root key %.*s with id %" PRId64
+            ". Failing request.",
             (int) root_key_buffer.len,
             root_key_buffer.data,
             parent_key_id
@@ -520,10 +527,12 @@ static GglError create_key_path(GglList *key_path, GglObjVec *key_ids_output) {
             err = value_is_present_for_key(current_key_id, &value_is_present);
             if (err != GGL_ERR_OK) {
                 GGL_LOGE(
-                    "failed to check for value for key %.*s with id %" PRId64
-                    " with error %s",
+                    "failed to check for value for key %d (%.*s) in key path "
+                    "%s with id %" PRId64 " with error %s",
+                    (int) index,
                     (int) current_key_buffer.len,
                     current_key_buffer.data,
+                    print_key_path(key_path),
                     current_key_id,
                     ggl_strerror(err)
                 );
@@ -531,9 +540,12 @@ static GglError create_key_path(GglList *key_path, GglObjVec *key_ids_output) {
             }
             if (value_is_present) {
                 GGL_LOGW(
-                    "value already present for key %.*s with id %" PRId64,
+                    "value already present for key %d (%.*s) in key path %s "
+                    "with id %" PRId64 ". Failing request.",
+                    (int) index,
                     (int) current_key_buffer.len,
                     current_key_buffer.data,
+                    print_key_path(key_path),
                     current_key_id
                 );
                 return GGL_ERR_FAILURE;
@@ -591,7 +603,7 @@ static GglError notify_single_key(
     GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
     sqlite3_bind_int64(stmt, 1, notify_key_id);
     int rc = 0;
-    GGL_LOGD(
+    GGL_LOGT(
         "notifying subscribers on key with id %" PRId64
         " that key %s has changed",
         notify_key_id,
@@ -601,11 +613,11 @@ static GglError notify_single_key(
         rc = sqlite3_step(stmt);
         switch (rc) {
         case SQLITE_DONE:
-            GGL_LOGD("DONE");
+            GGL_LOGT("DONE");
             break;
         case SQLITE_ROW: {
             uint32_t handle = (uint32_t) sqlite3_column_int64(stmt, 0);
-            GGL_LOGD("Sending to %u", handle);
+            GGL_LOGT("Sending to %u", handle);
             ggl_sub_respond(handle, GGL_OBJ_LIST(*changed_key_path));
         } break;
         default:
@@ -641,14 +653,15 @@ GglError ggconfig_write_value_at_key(
     GglList *key_path, GglBuffer *value, int64_t timestamp
 ) {
     if (config_initialized == false) {
+        GGL_LOGE("Database not initialized");
         return GGL_ERR_FAILURE;
     }
 
-    GGL_LOGI(
-        "starting request to insert/update key: %s", print_key_path(key_path)
-    );
-
     sqlite3_exec(config_database, "BEGIN TRANSACTION", NULL, NULL, NULL);
+    GGL_LOGT(
+        "starting transaction to insert/update key: %s",
+        print_key_path(key_path)
+    );
 
     GglObject ids_array[GGL_MAX_OBJECT_DEPTH];
     GglObjVec ids = { .list = { .items = ids_array, .len = 0 },
@@ -664,7 +677,11 @@ GglError ggconfig_write_value_at_key(
         }
 
         last_key_id = ids.list.items[ids.list.len - 1].i64;
-        value_insert(last_key_id, value, timestamp);
+        err = value_insert(last_key_id, value, timestamp);
+        if (err != GGL_ERR_OK) {
+            sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+            return err;
+        }
         sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
         err = notify_nested_key(key_path, ids);
         if (err != GGL_ERR_OK) {
@@ -679,7 +696,7 @@ GglError ggconfig_write_value_at_key(
     }
     if (err != GGL_ERR_OK) {
         GGL_LOGE(
-            "Failed to get key id for key path %s with error %s",
+            "Failed to get key ids for key path %s with error %s",
             print_key_path(key_path),
             ggl_strerror(err)
         );
@@ -702,8 +719,9 @@ GglError ggconfig_write_value_at_key(
     }
     if (child_is_present) {
         GGL_LOGW(
-            "Key %s with id %" PRId64 " is a map with one or more children, so "
-            "it can not also store a value",
+            "Key %s with id %" PRId64
+            " is an object with one or more children, so "
+            "it can not also store a value. Failing request.",
             print_key_path(key_path),
             last_key_id
         );
@@ -728,7 +746,7 @@ GglError ggconfig_write_value_at_key(
         return err;
     }
     if (existing_timestamp > timestamp) {
-        GGL_LOGI(
+        GGL_LOGD(
             "key %s has an existing timestamp %" PRId64 " newer than provided "
             "timestamp %" PRId64 ", so it will not be updated",
             print_key_path(key_path),
@@ -801,9 +819,6 @@ static GglError read_value_at_key(
     memcpy(string_buffer, value_string, value_length);
     value->buf.len = value_length;
 
-    GGL_LOGD(
-        "value read: %.*s", (int) value->buf.len, (char *) value->buf.data
-    );
     return GGL_ERR_OK;
 }
 
@@ -813,7 +828,7 @@ static GglError read_value_at_key(
 static GglError read_key_recursive(
     int64_t key_id, GglObject *value, GglAlloc *alloc
 ) {
-    GGL_LOGD("reading key id %" PRId64, key_id);
+    GGL_LOGT("reading key id %" PRId64, key_id);
 
     bool value_is_present;
     GglError err = value_is_present_for_key(key_id, &value_is_present);
@@ -821,7 +836,14 @@ static GglError read_key_recursive(
         return err;
     }
     if (value_is_present) {
-        return read_value_at_key(key_id, value, alloc);
+        err = read_value_at_key(key_id, value, alloc);
+        GGL_LOGT(
+            "value read: %.*s from key id %" PRId64,
+            (int) value->buf.len,
+            (char *) value->buf.data,
+            key_id
+        );
+        return err;
     }
 
     // at this point we know the key should be a map, because it's not a value
@@ -894,6 +916,7 @@ static GglError read_key_recursive(
 
 GglError ggconfig_get_value_from_key(GglList *key_path, GglObject *value) {
     if (config_initialized == false) {
+        GGL_LOGE("Database not initialized.");
         return GGL_ERR_FAILURE;
     }
 
@@ -901,7 +924,8 @@ GglError ggconfig_get_value_from_key(GglList *key_path, GglObject *value) {
     GglBumpAlloc bumper = ggl_bump_alloc_init(GGL_BUF(key_value_memory));
 
     sqlite3_exec(config_database, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    GGL_LOGI("starting request for key: %s", print_key_path(key_path));
+    GGL_LOGT("Starting transaction to read key: %s", print_key_path(key_path));
+
     GglObject ids_array[GGL_MAX_OBJECT_DEPTH];
     GglObjVec ids = { .list = { .items = ids_array, .len = 0 },
                       .capacity = GGL_MAX_OBJECT_DEPTH };
@@ -924,10 +948,15 @@ GglError ggconfig_get_key_notification(GglList *key_path, uint32_t handle) {
     GglError return_err = GGL_ERR_FAILURE;
 
     if (config_initialized == false) {
+        GGL_LOGE("Database not initialized");
         return GGL_ERR_FAILURE;
     }
 
     sqlite3_exec(config_database, "BEGIN TRANSACTION", NULL, NULL, NULL);
+    GGL_LOGT(
+        "Starting transaction to subscribe to key %s", print_key_path(key_path)
+    );
+
     // ensure this key is present in the key path. Key does not require a
     // value
     GglObject ids_array[GGL_MAX_OBJECT_DEPTH];
@@ -944,14 +973,8 @@ GglError ggconfig_get_key_notification(GglList *key_path, uint32_t handle) {
     }
     int64_t key_id = ids.list.items[ids.list.len - 1].i64;
 
-    GGL_LOGI(
-        "Subscribing %" PRIu32 ":%" PRIu32 " to %s",
-        handle & (0xFFFF0000 >> 16),
-        handle & 0x0000FFFF,
-        print_key_path(key_path)
-    );
     // insert the key & handle data into the subscriber database
-    GGL_LOGD("INSERT %" PRId64 ", %" PRIu32, key_id, handle);
+    GGL_LOGT("INSERT %" PRId64 ", %" PRIu32, key_id, handle);
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(
         config_database, GGL_SQL_ADD_SUBSCRIPTION, -1, &stmt, NULL
