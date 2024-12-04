@@ -33,6 +33,12 @@ static void test_insert(
     int64_t timestamp,
     GglError expected_result
 ) {
+    GGL_LOGD(
+        "test_insert: key=%s, timestamp=%d, expected_result=%s",
+        print_key_path(&test_key),
+        (int) timestamp,
+        ggl_strerror(expected_result)
+    );
     GglBuffer server = GGL_STR("gg_config");
 
     static uint8_t big_buffer_for_bump[4096];
@@ -229,6 +235,11 @@ static void compare_objects(GglObject expected, GglObject result) {
 static void test_get(
     GglList test_key_path, GglObject expected_object, GglError expected_result
 ) {
+    GGL_LOGD(
+        "test_get %s, expecting %s",
+        print_key_path(&test_key_path),
+        ggl_strerror(expected_result)
+    );
     GglBuffer server = GGL_STR("gg_config");
     static uint8_t big_buffer_for_bump[4096];
     GglBumpAlloc the_allocator
@@ -257,7 +268,7 @@ static void test_get(
     }
     if (expected_result == GGL_ERR_OK && error != GGL_ERR_OK) {
         GGL_LOGE(
-            "insert of key %s did not expect error but got error %s and remote "
+            "get key %s did not expect error but got error %s and remote "
             "error %s",
             print_key_path(&test_key_path),
             ggl_strerror(error),
@@ -301,6 +312,11 @@ static void subscription_close(void *ctx, unsigned int handle) {
 }
 
 static void test_subscribe(GglList key, GglError expected_response) {
+    GGL_LOGD(
+        "test_subscribe %s, expecting %s",
+        print_key_path(&key),
+        ggl_strerror(expected_response)
+    );
     GglBuffer server = GGL_STR("gg_config");
 
     GglMap params = GGL_MAP({ GGL_STR("key_path"), GGL_OBJ_LIST(key) }, );
