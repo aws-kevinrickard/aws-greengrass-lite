@@ -1,18 +1,19 @@
 # `gg_config` interface
 
 The `gg_config` core-bus interface provides functionality for managing the
-Greengrass installation's configuration.
+Greengrass installation's configuration. The configuration follows JSON
+structure.
 
 Each method in the interface is described below.
 
 ## read
 
 The `read` method returns the value associated with `key_path`. If the key has
-subkeys, the value is an map with the key-value pairs under the key, performed
-recursively.
+subkeys, the value is an object with the key-value pairs under the key, which
+are read recursively.
 
 - [gg-config-read-1] `read` can be invoked with call.
-- [gg-config-read-2] `read` on a parent key returns an object encoding the
+- [gg-config-read-2] `read` on an object key returns an object encoding the
   hierarchy under that key.
 
 ### Parameters
@@ -27,14 +28,15 @@ recursively.
   database for the key.
 - [gg-config-read-resp-2] The method will error if a response value is not
   provided.
-  - [gg-config-read-resp-2] `GG_ERR_NOENTRY` will be returned if the key was not
-    in the configuration.
+  - [gg-config-read-resp-2.1] `GG_ERR_NOENTRY` will be returned if the key was
+    not in the configuration.
 
 ## write
 
-The `write` method updates the value associated with `key_path`. If the value is
-a map with subkeys, it is merged in recursively. Keys are updated if the new
-timestamp is greater or equal to the existing timestamp
+The `write` method updates the value associated with `key_path`. If the `value`
+is an object with subkeys, it is merged in recursively. Any values (i.e. leaves
+of the `value` object) are updated if the new timestamp is greater or equal to
+an existing value's timestamp.
 
 - [gg-config-write-1] `write` can be invoked with call or notify.
 
