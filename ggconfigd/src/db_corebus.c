@@ -133,10 +133,37 @@ static GglError rpc_read(void *ctx, GglMap params, uint32_t handle) {
     return GGL_ERR_OK;
 }
 
-static GglError rpc_subscribe(void *ctx, GglMap params, uint32_t handle) {
+static GglError rpc_delete(void *ctx, GglMap params, uint32_t handle) {
     (void) ctx;
 
-    GGL_LOGD("subscribing");
+    GglObject *key_path;
+    if (!ggl_map_get(params, GGL_STR("key_path"), &key_path)
+        || (key_path->type != GGL_TYPE_LIST)) {
+        GGL_LOGE("read received invalid key_path argument.");
+        return GGL_ERR_INVALID;
+    }
+
+    GglError err = ggl_list_type_check(key_path->list, GGL_TYPE_BUF);
+    if (err != GGL_ERR_OK) {
+        GGL_LOGE("key_path elements must be strings.");
+        return GGL_ERR_RANGE;
+    }
+
+    GGL_LOGD(
+        "Processing request to delete key %s (recursively)",
+        print_key_path(&key_path->list)
+    );
+    err = ggconfig_delete_key(&key_path->list);
+    if (err != GGL_ERR_OK) {
+        return err;
+    }
+
+    ggl_respond(handle, GGL_OBJ_NULL());
+    return GGL_ERR_OK;
+}
+
+static GglError rpc_subscribe(void *ctx, GglMap params, uint32_t handle) {
+    (void) ctx;
 
     GglObject *key_path;
     if (!ggl_map_get(params, GGL_STR("key_path"), &key_path)
@@ -301,6 +328,7 @@ void ggconfigd_start_server(void) {
     GglRpcMethodDesc handlers[]
         = { { GGL_STR("read"), false, rpc_read, NULL },
             { GGL_STR("write"), false, rpc_write, NULL },
+            { GGL_STR("delete"), false, rpc_delete, NULL },
             { GGL_STR("subscribe"), true, rpc_subscribe, NULL } };
     size_t handlers_len = sizeof(handlers) / sizeof(handlers[0]);
 

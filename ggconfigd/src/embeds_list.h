@@ -23,6 +23,11 @@
     EMBED_FILE(sql/read_value.sql, GGL_SQL_READ_VALUE) \
     EMBED_FILE(sql/get_children.sql, GGL_SQL_GET_CHILDREN) \
     EMBED_FILE(sql/add_subscription.sql, GGL_SQL_ADD_SUBSCRIPTION) \
-    EMBED_FILE(sql/create_index.sql, GGL_SQL_CREATE_INDEX)
+    EMBED_FILE(sql/create_index.sql, GGL_SQL_CREATE_INDEX) \
+    EMBED_FILE(sql/delete_key.sql, GGL_SQL_DELETE_KEY) \
+    EMBED_FILE(sql/delete_relations.sql, GGL_SQL_DELETE_RELATIONS) \
+    EMBED_FILE(sql/delete_subscribers.sql, GGL_SQL_DELETE_SUBSCRIBERS) \
+    EMBED_FILE(sql/delete_value.sql, GGL_SQL_DELETE_VALUE) \
+    EMBED_FILE(sql/get_descendants.sql, GGL_SQL_GET_DESCENDANTS)
 
 #endif

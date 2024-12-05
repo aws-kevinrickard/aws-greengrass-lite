@@ -9,6 +9,10 @@
 /// The max depth of nested objects via maps or lists
 #define GGL_MAX_OBJECT_DEPTH 15
 
+/// The maximum expected config keys (including nested) held under one component
+/// configuration
+#define MAX_CONFIG_KEYS_PER_COMPONENT 256
+
 // According to
 // https://docs.aws.amazon.com/iot/latest/apireference/API_ThingAttribute.html
 #define THING_NAME_MAX_LENGTH 128

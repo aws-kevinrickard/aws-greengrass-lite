@@ -1018,6 +1018,198 @@ GglError ggconfig_get_value_from_key(GglList *key_path, GglObject *value) {
     return err;
 }
 
+/// read all the descendants of key_id, including key_id itself as a descendant
+static GglError get_descendants(
+    int64_t key_id, GglObjVec *descendant_ids_output
+) {
+    GGL_LOGT("getting descendants for id %" PRId64, key_id);
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(
+        config_database, GGL_SQL_GET_DESCENDANTS, -1, &stmt, NULL
+    );
+    GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
+    sqlite3_bind_int64(stmt, 1, key_id);
+    sqlite3_bind_int64(stmt, 2, key_id);
+
+    int rc = sqlite3_step(stmt);
+    while (rc == SQLITE_ROW) {
+        int64_t id = sqlite3_column_int64(stmt, 0);
+        GGL_LOGT("found descendant id %" PRId64, id);
+        GglError err = ggl_obj_vec_push(descendant_ids_output, GGL_OBJ_I64(id));
+        if (err != GGL_ERR_OK) {
+            GGL_LOGE(
+                "Not enough memory to push a descendant into the output vector."
+            );
+            return err;
+        }
+        rc = sqlite3_step(stmt);
+    }
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "get descendants for key id %" PRId64 " fail: %s",
+            key_id,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
+    }
+    return GGL_ERR_OK;
+}
+
+static GglError delete_value(int64_t key_id) {
+    GGL_LOGT("Deleting key id %" PRId64 " from the value table", key_id);
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(config_database, GGL_SQL_DELETE_VALUE, -1, &stmt, NULL);
+    GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
+    sqlite3_bind_int64(stmt, 1, key_id);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "delete value for key id %" PRId64 " fail: %s",
+            key_id,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
+    }
+    return GGL_ERR_OK;
+}
+
+static GglError delete_relations(int64_t key_id) {
+    GGL_LOGT(
+        "Deleting all entries referencing key id %" PRId64
+        " from the relation table",
+        key_id
+    );
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(
+        config_database, GGL_SQL_DELETE_RELATIONS, -1, &stmt, NULL
+    );
+    GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
+    sqlite3_bind_int64(stmt, 1, key_id);
+    sqlite3_bind_int64(stmt, 2, key_id);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "delete relations for key id %" PRId64 " fail: %s",
+            key_id,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
+    }
+    return GGL_ERR_OK;
+}
+
+static GglError delete_subscribers(int64_t key_id) {
+    GGL_LOGT("Deleting key id %" PRId64 " from the subscribers table", key_id);
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(
+        config_database, GGL_SQL_DELETE_SUBSCRIBERS, -1, &stmt, NULL
+    );
+    GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
+    sqlite3_bind_int64(stmt, 1, key_id);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "delete subscribers on keyid %" PRId64 " fail: %s",
+            key_id,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
+    }
+    return GGL_ERR_OK;
+}
+
+static GglError delete_key(int64_t key_id) {
+    GGL_LOGT("Deleting key id %" PRId64 " from the key table", key_id);
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(config_database, GGL_SQL_DELETE_KEY, -1, &stmt, NULL);
+    GGL_CLEANUP(cleanup_sqlite3_finalize, stmt);
+    sqlite3_bind_int64(stmt, 1, key_id);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "delete key id %" PRId64 " fail: %s",
+            key_id,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
+    }
+    return GGL_ERR_OK;
+}
+
+GglError ggconfig_delete_key(GglList *key_path) {
+    if (config_initialized == false) {
+        GGL_LOGE("Database not initialized.");
+        return GGL_ERR_FAILURE;
+    }
+
+    sqlite3_exec(config_database, "BEGIN TRANSACTION", NULL, NULL, NULL);
+    GGL_LOGT("Starting transaction to delete key %s", print_key_path(key_path));
+
+    GglObject ids_array[GGL_MAX_OBJECT_DEPTH];
+    GglObjVec ids = { .list = { .items = ids_array, .len = 0 },
+                      .capacity = GGL_MAX_OBJECT_DEPTH };
+    GglError err = get_key_ids(key_path, &ids);
+    if (err == GGL_ERR_NOENTRY) {
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        GGL_LOGT(
+            "Key %s does not exist, nothing to do", print_key_path(key_path)
+        );
+        return GGL_ERR_OK;
+    }
+    if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+        return err;
+    }
+    int64_t key_id = ids.list.items[ids.list.len - 1].i64;
+
+    GglObject descendant_ids_array
+        [MAX_CONFIG_KEYS_PER_COMPONENT]; // Deletes are recursive, so worst
+                                         // case, a user is resetting their
+                                         // entire component configuration
+    GglObjVec descendant_ids
+        = { .list = { .items = descendant_ids_array, .len = 0 },
+            .capacity = MAX_CONFIG_KEYS_PER_COMPONENT };
+    err = get_descendants(key_id, &descendant_ids);
+    if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+        return err;
+    }
+
+    for (size_t i = 0; i < descendant_ids.list.len; i++) {
+        int64_t descendant_id = descendant_ids.list.items[i].i64;
+        err = delete_subscribers(descendant_id);
+        if (err != GGL_ERR_OK) {
+            GGL_LOGE(
+                "Failed to delete subscribers for id %" PRId64
+                " with error %s. This should not happen, but keyids are not "
+                "reused and thus "
+                "any subscriptions on this key will not be activated anymore, "
+                "so execution can continue.",
+                descendant_id,
+                ggl_strerror(err)
+            );
+        }
+        err = delete_value(descendant_id);
+        if (err != GGL_ERR_OK) {
+            sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+            return err;
+        }
+        err = delete_relations(descendant_id);
+        if (err != GGL_ERR_OK) {
+            sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+            return err;
+        }
+        err = delete_key(descendant_id);
+        if (err != GGL_ERR_OK) {
+            sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
+            return err;
+        }
+    }
+
+    sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+    return GGL_ERR_OK;
+}
+
 GglError ggconfig_get_key_notification(GglList *key_path, uint32_t handle) {
     GglError return_err = GGL_ERR_FAILURE;
 
