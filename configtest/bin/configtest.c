@@ -291,6 +291,65 @@ static void test_get(
     }
 }
 
+static void test_list(
+    GglList test_key_path, GglObject expected_object, GglError expected_result
+) {
+    GGL_LOGD(
+        "test_list %s, expecting %s",
+        print_key_path(&test_key_path),
+        ggl_strerror(expected_result)
+    );
+    GglBuffer server = GGL_STR("gg_config");
+    static uint8_t big_buffer_for_bump[4096];
+    GglBumpAlloc the_allocator
+        = ggl_bump_alloc_init(GGL_BUF(big_buffer_for_bump));
+
+    GglMap params
+        = GGL_MAP({ GGL_STR("key_path"), GGL_OBJ_LIST(test_key_path) }, );
+    GglObject result;
+
+    GglError remote_error = GGL_ERR_OK;
+    GglError error = ggl_call(
+        server,
+        GGL_STR("list"),
+        params,
+        &remote_error,
+        &the_allocator.alloc,
+        &result
+    );
+    if (expected_result != GGL_ERR_OK && error != GGL_ERR_REMOTE) {
+        GGL_LOGE(
+            "list key %s expected result %s but there was not a remote error",
+            print_key_path(&test_key_path),
+            ggl_strerror(expected_result)
+        );
+        assert(0);
+    }
+    if (expected_result == GGL_ERR_OK && error != GGL_ERR_OK) {
+        GGL_LOGE(
+            "list key %s did not expect error but got error %s and remote "
+            "error %s",
+            print_key_path(&test_key_path),
+            ggl_strerror(error),
+            ggl_strerror(remote_error)
+        );
+        assert(0);
+    }
+    if (remote_error != expected_result) {
+        GGL_LOGE(
+            "list key %s expected result %s but got %s",
+            print_key_path(&test_key_path),
+            ggl_strerror(expected_result),
+            ggl_strerror(remote_error)
+        );
+        assert(0);
+        return;
+    }
+    if (expected_result == GGL_ERR_OK) {
+        compare_objects(expected_object, result);
+    }
+}
+
 static void test_delete(GglList key_path, GglError expected_result) {
     GGL_LOGD(
         "test_delete %s, expecting %s",
@@ -1158,6 +1217,67 @@ int main(int argc, char **argv) {
     // notified. In the future, it would be good to have that behavior too. See
     // the docs/design/ggconfigd.md section "Subscription behavior for keys
     // which become deleted" for more info.
+
+    // Test to ensure list reads all children, but not nested keys
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component21")), GGL_OBJ_BUF(GGL_STR("key1"))
+        ),
+        GGL_OBJ_BUF(GGL_STR("value1")),
+        -1,
+        GGL_ERR_OK
+    );
+    test_insert(
+        GGL_LIST(
+            GGL_OBJ_BUF(GGL_STR("component21")), GGL_OBJ_BUF(GGL_STR("key2"))
+        ),
+        GGL_OBJ_MAP(GGL_MAP(
+            { GGL_STR("nested_key1"), GGL_OBJ_BUF(GGL_STR("value2")) },
+            { GGL_STR("nested_key2"), GGL_OBJ_BUF(GGL_STR("value3")) }
+        )),
+        -1,
+        GGL_ERR_OK
+    );
+    test_list(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component21"))),
+        GGL_OBJ_LIST(
+            GGL_LIST(GGL_OBJ_BUF(GGL_STR("key1")), GGL_OBJ_BUF(GGL_STR("key2")))
+        ),
+        GGL_ERR_OK
+    );
+
+    // Test to ensure list returns no entry if the key doesn't exist
+    test_list(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("non-existent")), ),
+        GGL_OBJ_NULL(),
+        GGL_ERR_NOENTRY
+    );
+
+    // Test to ensure list returns invalid if the key is a value
+    test_insert(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component22"))),
+        GGL_OBJ_BUF(GGL_STR("value")),
+        -1,
+        GGL_ERR_OK
+    );
+    test_list(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component22"))),
+        GGL_OBJ_NULL(),
+        GGL_ERR_INVALID
+    );
+
+    // Test to ensure list returns an empty list if the key is an empty map
+    test_insert(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component23"))),
+        GGL_OBJ_MAP(GGL_MAP()),
+        -1,
+        GGL_ERR_OK
+    );
+    test_list(
+        GGL_LIST(GGL_OBJ_BUF(GGL_STR("component23"))),
+        GGL_OBJ_LIST(GGL_LIST()),
+        GGL_ERR_OK
+    );
 
     // test_insert(
     //     GGL_LIST(GGL_OBJ_BUF(GGL_STR("component")),

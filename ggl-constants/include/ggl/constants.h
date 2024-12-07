@@ -11,7 +11,10 @@
 
 /// The maximum expected config keys (including nested) held under one component
 /// configuration
-#define MAX_CONFIG_KEYS_PER_COMPONENT 256
+#define MAX_CONFIG_DESCENDANTS_PER_COMPONENT 256
+
+/// The maximum expected config keys held as children of a single config object
+#define MAX_CONFIG_CHILDREN_PER_OBJECT 64
 
 // According to
 // https://docs.aws.amazon.com/iot/latest/apireference/API_ThingAttribute.html

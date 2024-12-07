@@ -22,6 +22,7 @@ GglError ggconfig_write_value_at_key(
 GglError ggconfig_write_empty_map(GglList *key_path);
 GglError ggconfig_delete_key(GglList *key_path);
 GglError ggconfig_get_value_from_key(GglList *key_path, GglObject *value);
+GglError ggconfig_list_subkeys(GglList *key_path, GglList *subkeys);
 GglError ggconfig_get_key_notification(GglList *key_path, uint32_t handle);
 GglError ggconfig_open(void);
 GglError ggconfig_close(void);

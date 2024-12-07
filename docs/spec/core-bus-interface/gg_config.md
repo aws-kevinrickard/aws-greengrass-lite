@@ -31,6 +31,32 @@ are read recursively.
   - [gg-config-read-resp-2.1] `GG_ERR_NOENTRY` will be returned if the key was
     not in the configuration.
 
+## list
+
+The `list` method returns a list of immediate subkeys of an object at the given
+`key_path`. Unlike `read`, this method does not recursively fetch all nested
+keys and values.
+
+- [gg-config-list-1] `list` can be invoked with call.
+- [gg-config-list-2] `list` returns only the immediate subkeys of the object
+  specified at the key path.
+
+### Parameters
+
+- [gg-config-list-params-1] `key_path` is a required parameter of type list.
+  - [gg-config-list-params-1.1] list elements are buffers containing a single
+    level in the key hierarchy.
+
+### Response
+
+- [gg-config-list-resp-1] The response value is a list of buffers, where each
+  buffer is an immediate subkey of the specified `key_path` object.
+- [gg-config-list-resp-2] If the specified `key_path` does not exist,
+  `GGL_ERR_NOENTRY` is returned.
+- [gg-config-list-resp-3] If the specified `key_path` exists but is not a
+  object/map (i.e. keyPath directly holds a value), `GGL_ERR_INVALID` is
+  returned.
+
 ## write
 
 The `write` method updates the value associated with `key_path`. If the `value`

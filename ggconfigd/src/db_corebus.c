@@ -133,6 +133,37 @@ static GglError rpc_read(void *ctx, GglMap params, uint32_t handle) {
     return GGL_ERR_OK;
 }
 
+static GglError rpc_list(void *ctx, GglMap params, uint32_t handle) {
+    (void) ctx;
+
+    GglObject *key_path;
+    if (!ggl_map_get(params, GGL_STR("key_path"), &key_path)
+        || (key_path->type != GGL_TYPE_LIST)) {
+        GGL_LOGE("read received invalid key_path argument.");
+        return GGL_ERR_INVALID;
+    }
+
+    GglError ret = ggl_list_type_check(key_path->list, GGL_TYPE_BUF);
+    if (ret != GGL_ERR_OK) {
+        GGL_LOGE("key_path elements must be strings.");
+        return GGL_ERR_RANGE;
+    }
+
+    GGL_LOGD(
+        "Processing request to list subkeys of key %s",
+        print_key_path(&key_path->list)
+    );
+
+    GglList subkeys;
+    GglError err = ggconfig_list_subkeys(&key_path->list, &subkeys);
+    if (err != GGL_ERR_OK) {
+        return err;
+    }
+
+    ggl_respond(handle, GGL_OBJ_LIST(subkeys));
+    return GGL_ERR_OK;
+}
+
 static GglError rpc_delete(void *ctx, GglMap params, uint32_t handle) {
     (void) ctx;
 
@@ -327,6 +358,7 @@ static GglError rpc_write(void *ctx, GglMap params, uint32_t handle) {
 void ggconfigd_start_server(void) {
     GglRpcMethodDesc handlers[]
         = { { GGL_STR("read"), false, rpc_read, NULL },
+            { GGL_STR("list"), false, rpc_list, NULL },
             { GGL_STR("write"), false, rpc_write, NULL },
             { GGL_STR("delete"), false, rpc_delete, NULL },
             { GGL_STR("subscribe"), true, rpc_subscribe, NULL } };

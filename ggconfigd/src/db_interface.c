@@ -792,6 +792,7 @@ GglError ggconfig_write_value_at_key(
     bool value_is_present;
     err = value_is_present_for_key(last_key_id, &value_is_present);
     if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
         return err;
     }
     if (!value_is_present) {
@@ -801,6 +802,7 @@ GglError ggconfig_write_value_at_key(
             print_key_path(key_path),
             last_key_id
         );
+        sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);
         return GGL_ERR_FAILURE;
     }
 
@@ -928,8 +930,20 @@ static GglError read_key_recursive(
 
     // read children count
     size_t children_count = 0;
-    while (sqlite3_step(read_children_stmt) == SQLITE_ROW) {
+    int rc = sqlite3_step(read_children_stmt);
+    while (rc == SQLITE_ROW) {
         children_count++;
+        rc = sqlite3_step(read_children_stmt);
+    }
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "failed to read children count for key id %" PRId64
+            " with rc %d and error %s",
+            key_id,
+            rc,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
     }
     GGL_LOGT(
         "the number of children keys for key id %" PRId64 " is %zd",
@@ -954,7 +968,8 @@ static GglError read_key_recursive(
 
     // read the children
     sqlite3_reset(read_children_stmt);
-    while (sqlite3_step(read_children_stmt) == SQLITE_ROW) {
+    rc = sqlite3_step(read_children_stmt);
+    while (rc == SQLITE_ROW) {
         int64_t child_key_id = sqlite3_column_int64(read_children_stmt, 0);
         const uint8_t *child_key_name
             = sqlite3_column_text(read_children_stmt, 1);
@@ -981,6 +996,18 @@ static GglError read_key_recursive(
             GGL_LOGE("error pushing kv with error %s", ggl_strerror(err));
             return err;
         }
+
+        rc = sqlite3_step(read_children_stmt);
+    }
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "failed to read children for key id %" PRId64
+            " with rc %d and error %s",
+            key_id,
+            rc,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
     }
 
     value->type = GGL_TYPE_MAP;
@@ -1016,6 +1043,122 @@ GglError ggconfig_get_value_from_key(GglList *key_path, GglObject *value) {
     err = read_key_recursive(key_id, value, &bumper.alloc);
     sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
     return err;
+}
+
+static GglError get_children(
+    int64_t key_id, GglObjVec *children_ids_output, GglAlloc *alloc
+) {
+    GGL_LOGT("Getting children for id %" PRId64, key_id);
+
+    sqlite3_stmt *read_children_stmt;
+    sqlite3_prepare_v2(
+        config_database, GGL_SQL_GET_CHILDREN, -1, &read_children_stmt, NULL
+    );
+    GGL_CLEANUP(cleanup_sqlite3_finalize, read_children_stmt);
+    sqlite3_bind_int64(read_children_stmt, 1, key_id);
+
+    int rc = sqlite3_step(read_children_stmt);
+    while (rc == SQLITE_ROW) {
+        const uint8_t *child_key_name
+            = sqlite3_column_text(read_children_stmt, 1);
+        unsigned long child_key_name_length
+            = (unsigned long) sqlite3_column_bytes(read_children_stmt, 1);
+
+        GGL_LOGT("Found child.");
+        uint8_t *child_key_name_memory
+            = GGL_ALLOCN(alloc, uint8_t, child_key_name_length);
+        if (!child_key_name_memory) {
+            GGL_LOGE("No more memory to allocate while reading children keys.");
+            return GGL_ERR_NOMEM;
+        }
+
+        memcpy(child_key_name_memory, child_key_name, child_key_name_length);
+
+        GglError err = ggl_obj_vec_push(
+            children_ids_output,
+            GGL_OBJ_BUF((GglBuffer) { .data = child_key_name_memory,
+                                      .len = child_key_name_length })
+        );
+        if (err != GGL_ERR_OK) {
+            GGL_LOGE("Not enough memory to push a child into the output vector."
+            );
+            return err;
+        }
+        rc = sqlite3_step(read_children_stmt);
+    }
+    if (rc != SQLITE_DONE) {
+        GGL_LOGE(
+            "Get children for key id %" PRId64
+            " failed with rc: %d and msg: %s",
+            key_id,
+            rc,
+            sqlite3_errmsg(config_database)
+        );
+        return GGL_ERR_FAILURE;
+    }
+    return GGL_ERR_OK;
+}
+
+GglError ggconfig_list_subkeys(GglList *key_path, GglList *subkeys) {
+    if (config_initialized == false) {
+        GGL_LOGE("Database not initialized.");
+        return GGL_ERR_FAILURE;
+    }
+
+    sqlite3_exec(config_database, "BEGIN TRANSACTION", NULL, NULL, NULL);
+    GGL_LOGT(
+        "Starting transaction to read subkeys for key: %s",
+        print_key_path(key_path)
+    );
+
+    GglObject ids_array[GGL_MAX_OBJECT_DEPTH];
+    GglObjVec ids = { .list = { .items = ids_array, .len = 0 },
+                      .capacity = GGL_MAX_OBJECT_DEPTH };
+    GglError err = get_key_ids(key_path, &ids);
+    if (err == GGL_ERR_NOENTRY) {
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        return GGL_ERR_NOENTRY;
+    }
+    if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        return err;
+    }
+    int64_t key_id = ids.list.items[ids.list.len - 1].i64;
+
+    bool value_is_present;
+    err = value_is_present_for_key(key_id, &value_is_present);
+    if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        return err;
+    }
+    if (value_is_present) {
+        GGL_LOGW(
+            "Key %s is a value, not a map, so subkeys/children can not be "
+            "listed.",
+            print_key_path(key_path)
+        );
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        return GGL_ERR_INVALID;
+    }
+
+    static GglObject children_ids_array[MAX_CONFIG_CHILDREN_PER_OBJECT];
+    GglObjVec children_ids
+        = { .list = { .items = children_ids_array, .len = 0 },
+            .capacity = MAX_CONFIG_CHILDREN_PER_OBJECT };
+
+    static uint8_t key_buffers_memory[GGL_COREBUS_MAX_MSG_LEN]; // TODO: can we
+                                                                // shrink this?
+    GglBumpAlloc bumper = ggl_bump_alloc_init(GGL_BUF(key_buffers_memory));
+    err = get_children(key_id, &children_ids, &bumper.alloc);
+    if (err != GGL_ERR_OK) {
+        sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+        return err;
+    }
+
+    sqlite3_exec(config_database, "END TRANSACTION", NULL, NULL, NULL);
+    subkeys->items = children_ids.list.items;
+    subkeys->len = children_ids.list.len;
+    return GGL_ERR_OK;
 }
 
 /// read all the descendants of key_id, including key_id itself as a descendant
@@ -1163,12 +1306,13 @@ GglError ggconfig_delete_key(GglList *key_path) {
     int64_t key_id = ids.list.items[ids.list.len - 1].i64;
 
     GglObject descendant_ids_array
-        [MAX_CONFIG_KEYS_PER_COMPONENT]; // Deletes are recursive, so worst
-                                         // case, a user is resetting their
-                                         // entire component configuration
+        [MAX_CONFIG_DESCENDANTS_PER_COMPONENT]; // Deletes are recursive, so
+                                                // worst case, a user is
+                                                // resetting their entire
+                                                // component configuration
     GglObjVec descendant_ids
         = { .list = { .items = descendant_ids_array, .len = 0 },
-            .capacity = MAX_CONFIG_KEYS_PER_COMPONENT };
+            .capacity = MAX_CONFIG_DESCENDANTS_PER_COMPONENT };
     err = get_descendants(key_id, &descendant_ids);
     if (err != GGL_ERR_OK) {
         sqlite3_exec(config_database, "ROLLBACK", NULL, NULL, NULL);

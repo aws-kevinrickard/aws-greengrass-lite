@@ -23,6 +23,11 @@ GglError ggl_gg_config_read(
 /// `result` must point to buffer with memory to read into
 GglError ggl_gg_config_read_str(GglBufList key_path, GglBuffer *result);
 
+/// Wrapper for core-bus `gg_config` `list`
+GglError ggl_gg_config_list(
+    GglBufList key_path, GglAlloc *alloc, GglList *subkeys_out
+);
+
 /// Wrapper for core-bus `gg_config` `write`
 GglError ggl_gg_config_write(
     GglBufList key_path, GglObject value, const int64_t *timestamp

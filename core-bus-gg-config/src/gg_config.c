@@ -44,6 +44,46 @@ GglError ggl_gg_config_read(
     return err;
 }
 
+GglError ggl_gg_config_list(
+    GglBufList key_path, GglAlloc *alloc, GglList *subkeys_out
+) {
+    if (key_path.len > GGL_MAX_OBJECT_DEPTH) {
+        GGL_LOGE("Key path depth exceeds maximum handled.");
+        return GGL_ERR_UNSUPPORTED;
+    }
+
+    GglObject path_obj[GGL_MAX_OBJECT_DEPTH] = { 0 };
+    for (size_t i = 0; i < key_path.len; i++) {
+        path_obj[i] = GGL_OBJ_BUF(key_path.bufs[i]);
+    }
+
+    GglMap args = GGL_MAP(
+        { GGL_STR("key_path"),
+          GGL_OBJ_LIST((GglList) { .items = path_obj, .len = key_path.len }) },
+    );
+
+    GglError remote_err = GGL_ERR_OK;
+    GglObject result_obj;
+    GglError err = ggl_call(
+        GGL_STR("gg_config"),
+        GGL_STR("list"),
+        args,
+        &remote_err,
+        alloc,
+        &result_obj
+    );
+    if ((err == GGL_ERR_REMOTE) && (remote_err != GGL_ERR_OK)) {
+        err = remote_err;
+    }
+    if (result_obj.type != GGL_TYPE_LIST) {
+        GGL_LOGE("Configuration list failed to return a list.");
+        return GGL_ERR_FAILURE;
+    }
+    subkeys_out->items = result_obj.list.items;
+    subkeys_out->len = result_obj.list.len;
+    return err;
+}
+
 GglError ggl_gg_config_delete(GglBufList key_path) {
     if (key_path.len > GGL_MAX_OBJECT_DEPTH) {
         GGL_LOGE("Key path depth exceeds maximum handled.");
