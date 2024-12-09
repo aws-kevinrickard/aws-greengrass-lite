@@ -4,6 +4,7 @@
 
 #include "fleet_status_service.h"
 #include <sys/types.h>
+#include <assert.h>
 #include <ggl/buffer.h>
 #include <ggl/bump_alloc.h>
 #include <ggl/cleanup.h>
@@ -124,12 +125,6 @@ GglError publish_fleet_status_update(
         );
         return ret;
     }
-    GGL_LIST_FOREACH(component, components) {
-        if (component->type != GGL_TYPE_BUF) {
-            GGL_LOGE("Incorrect type of component received. Expected buffer.");
-            return GGL_ERR_FAILURE;
-        }
-    }
 
     // get status for each running component
     GglKV component_infos[MAX_COMPONENTS][5];
@@ -137,6 +132,14 @@ GglError publish_fleet_status_update(
         = GGL_OBJ_VEC((GglObject[MAX_COMPONENTS]) { 0 });
     size_t component_count = 0;
     GGL_LIST_FOREACH(component, components) {
+        if (component->type != GGL_TYPE_BUF) {
+            GGL_LOGE(
+                "Incorrect type of component key received. Expected buffer. "
+                "Cannot publish fleet status update for this entry."
+            );
+            continue;
+        }
+
         // ignore core components for now, gghealthd does not support
         // getting their health yet
         GglList ignored_components = GGL_LIST(
@@ -151,8 +154,11 @@ GglError publish_fleet_status_update(
         bool ignore_component = false;
         GGL_LIST_FOREACH(ignored_component, ignored_components) {
             if (ignored_component->type != GGL_TYPE_BUF) {
-                GGL_LOGE("Expected type buffer for ignored component list.");
-                return GGL_ERR_FAILURE;
+                GGL_LOGE(
+                    "Expected type buffer for ignored component list, but got "
+                    "something else. Unable to match this ignored component."
+                );
+                continue;
             }
             if (ggl_buffer_eq(ignored_component->buf, component->buf)) {
                 ignore_component = true;
@@ -174,17 +180,25 @@ GglError publish_fleet_status_update(
         );
         if (ret != GGL_ERR_OK) {
             GGL_LOGE(
-                "Unable to retrieve version of %.*s. Cannot publish fleet "
-                "status update.",
+                "Unable to retrieve version of %.*s with error %s. Cannot "
+                "publish fleet "
+                "status update for this component.",
                 (int) component->buf.len,
-                component->buf.data
+                component->buf.data,
+                ggl_strerror(ret)
             );
-            return GGL_ERR_NOENTRY;
+            continue;
         }
         ret = ggl_buf_clone(version_resp, &balloc.alloc, &version_resp);
         if (ret != GGL_ERR_OK) {
-            GGL_LOGE("Failed to copy version response buffer.");
-            return ret;
+            GGL_LOGE(
+                "Failed to copy version response buffer for %.*s with error "
+                "%s. Cannot publish fleet status update for this component.",
+                (int) component->buf.len,
+                component->buf.data,
+                ggl_strerror(ret)
+            );
+            continue;
         }
 
         // retrieve component health status
@@ -194,24 +208,25 @@ GglError publish_fleet_status_update(
             component->buf, &component_health
         );
         if (ret != GGL_ERR_OK) {
-            // skip reporting for components we fail to retrieve health statuses
-            // for.
-            // TODO: Should all failures in this loop cause an error or warning
-            // and continue instead of return? because we want to update the
-            // status of any components we can, without one component affecting
-            // others
-            GGL_LOGD(
-                "Failed to retrieve health status for %.*s, removing "
-                "component from fleet status update payload.",
+            GGL_LOGE(
+                "Failed to retrieve health status for %.*s with error %s. "
+                "Cannot publish fleet status update for this component.",
                 (int) component->buf.len,
-                component->buf.data
+                component->buf.data,
+                ggl_strerror(ret)
             );
             continue;
         }
         ret = ggl_buf_clone(component_health, &balloc.alloc, &component_health);
         if (ret != GGL_ERR_OK) {
-            GGL_LOGE("Failed to copy component health buffer.");
-            return ret;
+            GGL_LOGE(
+                "Failed to copy component health buffer for %.*s with error "
+                "%s. Cannot publish fleet status update for this component.",
+                (int) component->buf.len,
+                component->buf.data,
+                ggl_strerror(ret)
+            );
+            continue;
         }
 
         // if a component is broken, mark the device as unhealthy
@@ -230,17 +245,25 @@ GglError publish_fleet_status_update(
         );
         if (ret != GGL_ERR_OK) {
             GGL_LOGE(
-                "Unable to retrieve fleet configuration arn list for %.*s from "
-                "config. Cannot publish fleet status update.",
+                "Unable to retrieve fleet configuration arn list for component "
+                "%.*s from "
+                "config with error %s. Cannot publish fleet status update for "
+                "this component.",
+                (int) component->buf.len,
+                component->buf.data,
+                ggl_strerror(ret)
+            );
+            continue;
+        }
+        if (arn_list.type != GGL_TYPE_LIST) {
+            GGL_LOGE(
+                "Fleet configuration arn retrieved from config not of "
+                "type list for component %.*s. Cannot publish fleet "
+                "status update for this component.",
                 (int) component->buf.len,
                 component->buf.data
             );
-            return GGL_ERR_NOENTRY;
-        }
-        if (arn_list.type != GGL_TYPE_LIST) {
-            GGL_LOGE("Fleet configuration arn retrieved from config not of "
-                     "type list.");
-            return GGL_ERR_INVALID;
+            continue;
         }
 
         // building component info to be in line with the cloud's expected pojo
@@ -264,15 +287,19 @@ GglError publish_fleet_status_update(
         ret = ggl_obj_vec_push(&component_statuses, component_info);
         if (ret != GGL_ERR_OK) {
             GGL_LOGE(
-                "Failed to add component info for %.*s to component list.",
+                "Failed to add component info for %.*s to component list with "
+                "error %s. Cannot publish fleet status update for this "
+                "component.",
                 (int) component->buf.len,
-                component->buf.data
+                component->buf.data,
+                ggl_strerror(ret)
             );
-            return ret;
+            continue;
         }
 
         component_count++;
     }
+    assert(component_count == component_statuses.list.len);
 
     GglBuffer overall_device_status;
     if (device_healthy) {
