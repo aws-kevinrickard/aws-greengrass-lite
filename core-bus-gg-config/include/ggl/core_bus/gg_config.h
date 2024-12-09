@@ -24,6 +24,7 @@ GglError ggl_gg_config_read(
 GglError ggl_gg_config_read_str(GglBufList key_path, GglBuffer *result);
 
 /// Wrapper for core-bus `gg_config` `list`
+// subkeys_out is a list of buffer objects.
 GglError ggl_gg_config_list(
     GglBufList key_path, GglAlloc *alloc, GglList *subkeys_out
 );

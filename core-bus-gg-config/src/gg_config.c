@@ -79,6 +79,12 @@ GglError ggl_gg_config_list(
         GGL_LOGE("Configuration list failed to return a list.");
         return GGL_ERR_FAILURE;
     }
+    for (size_t i = 0; i < result_obj.list.len; i++) {
+        if (result_obj.list.items[i].type != GGL_TYPE_BUF) {
+            GGL_LOGE("Configuration list returned a non-buffer list object.");
+            return GGL_ERR_FAILURE;
+        }
+    }
     subkeys_out->items = result_obj.list.items;
     subkeys_out->len = result_obj.list.len;
     return err;
