@@ -14,7 +14,7 @@ services:
       iotDataEndpoint: "<CONFIGURE_THIS>"
       iotRoleAlias: "GreengrassV2TokenExchangeRoleAlias"
       runWithDefault:
-        posixUser: "ggc_user:ggc_group"
+        posixUser: "gg_component:gg_component"
       greengrassDataPlanePort: "8443"
   # aws.greengrass.fleet_provisioning:
   #   configuration:

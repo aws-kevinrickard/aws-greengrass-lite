@@ -62,9 +62,23 @@ The rootDir must also be owned by the service user/group.
 
 To create the service user/group:
 
+For systems with groupadd/useradd:
+
 ```sh
 groupadd ggcore
 useradd -Ng ggcore ggcore
+```
+
+For systems with addgroup/adduser:
+
+```sh
+addgroup ggcore
+adduser -g <gid from previous command> ggcore
+```
+
+Then run:
+
+```
 mkdir /var/lib/greengrass
 chown ggcore:ggcore /var/lib/greengrass
 ```
@@ -72,13 +86,23 @@ chown ggcore:ggcore /var/lib/greengrass
 The default user/group for components is set in your Greengrass configuration.
 Greengrass will configure components without an explicit user/group to run as
 that user/group. This is listed in the sample configuration as
-`ggc_user:ggc_group`. The container uses `gg_component` for the user and group.
+`gg_component:gg_component`.
 
-Run the following with `ggc_user`/`ggc_group` substituted with your user/group.
+Run the following with `gg_component`/`gg_component` substituted with your
+user/group.
+
+For systems with groupadd/useradd:
 
 ```sh
-groupadd ggc_group
-useradd -Ng ggc_group ggc_user
+groupadd gg_component
+useradd -Ng gg_component gg_component
+```
+
+For systems with addgroup/adduser:
+
+```sh
+addgroup gg_component
+adduser -g <gid from previous command> gg_component
 ```
 
 ## (Optional) Using Podman
