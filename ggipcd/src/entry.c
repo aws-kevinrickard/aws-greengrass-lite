@@ -29,6 +29,7 @@ GglError run_ggipcd(GglIpcArgs *args) {
             GGL_BUF_LIST(GGL_STR("system"), GGL_STR("rootPath")), &path_buf
         );
         if (ret != GGL_ERR_OK) {
+            GGL_LOGE("Failed to read system/rootPath from config.");
             return ret;
         }
 
