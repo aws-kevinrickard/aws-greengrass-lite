@@ -2408,6 +2408,12 @@ static void handle_deployment(
             return;
         }
 
+        if (!ggl_buffer_eq(component_name->buf, pair->key)) {
+            GGL_LOGE("Component name from recipe does not match component name "
+                     "from recipe file.");
+            return;
+        }
+
         // TODO: See if there is a better requirement. If a customer has the
         // same version as before but somehow updated their component
         // version their component may not get the updates.
