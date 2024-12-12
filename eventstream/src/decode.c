@@ -203,11 +203,9 @@ GglError eventstream_decode(
             break;
         case EVENTSTREAM_STRING:
             GGL_LOGT(
-                "Header: \"%.*s\" => \"%.*s\"",
+                "Header: \"%.*s\" => (data not shown)",
                 (int) header.name.len,
-                header.name.data,
-                (int) header.value.string.len,
-                header.value.string.data
+                header.name.data
             );
             break;
         }
