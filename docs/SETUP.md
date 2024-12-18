@@ -128,8 +128,3 @@ With the above, you can start a local deployment with:
   --artifacts-dir ~/sample-component/artifacts \
   --add-component com.example.SampleComponent=1.0.0
 ```
-
-## Local-Deploying the sample Hello World component
-
-See the
-[com.example.LiteHelloWorld component README](../hello-world-component/README.md)
