@@ -187,42 +187,46 @@ static GglError deserialize_payload(
 static GglError update_job(
     GglBuffer job_id, GglBuffer job_status, int64_t *version
 ) {
-    GGL_MTX_SCOPE_GUARD(&topic_scratch_mutex);
-    GglBuffer topic = GGL_BUF(topic_scratch);
-    GglError ret = create_update_job_topic(thing_name_buf, job_id, &topic);
-    if (ret != GGL_ERR_OK) {
-        return ret;
-    }
+    {
+        GGL_MTX_SCOPE_GUARD(&topic_scratch_mutex);
+        GglBuffer topic = GGL_BUF(topic_scratch);
+        GglError ret = create_update_job_topic(thing_name_buf, job_id, &topic);
+        if (ret != GGL_ERR_OK) {
+            return ret;
+        }
 
-    uint8_t version_buf[16] = { 0 };
-    int len = snprintf(
-        (char *) version_buf, sizeof(version_buf), "%" PRIi64, *version
-    );
-    if (len <= 0) {
-        GGL_LOGE("Version too big");
-        return GGL_ERR_RANGE;
-    }
+        uint8_t version_buf[16] = { 0 };
+        int len = snprintf(
+            (char *) version_buf, sizeof(version_buf), "%" PRIi64, *version
+        );
+        if (len <= 0) {
+            GGL_LOGE("Version too big");
+            return GGL_ERR_RANGE;
+        }
 
-    // https://docs.aws.amazon.com/iot/latest/developerguide/jobs-mqtt-api.html
-    GglObject payload_object = GGL_OBJ_MAP(GGL_MAP(
-        { GGL_STR("status"), GGL_OBJ_BUF(job_status) },
-        { GGL_STR("expectedVersion"),
-          GGL_OBJ_BUF((GglBuffer) { .data = version_buf, .len = (size_t) len }
-          ) },
-        { GGL_STR("clientToken"), GGL_OBJ_BUF(GGL_STR("jobs-nucleus-lite")) }
-    ));
+        // https://docs.aws.amazon.com/iot/latest/developerguide/jobs-mqtt-api.html
+        GglObject payload_object = GGL_OBJ_MAP(GGL_MAP(
+            { GGL_STR("status"), GGL_OBJ_BUF(job_status) },
+            { GGL_STR("expectedVersion"),
+              GGL_OBJ_BUF((GglBuffer) { .data = version_buf,
+                                        .len = (size_t) len }) },
+            { GGL_STR("clientToken"),
+              GGL_OBJ_BUF(GGL_STR("jobs-nucleus-lite")) }
+        ));
 
-    GglBumpAlloc call_alloc = ggl_bump_alloc_init(GGL_BUF(response_scratch));
-    GglObject result = GGL_OBJ_NULL();
-    ggl_aws_iot_call(topic, payload_object, &call_alloc.alloc, &result);
-    if (ret != GGL_ERR_OK) {
-        GGL_LOGE("Failed to publish on update job topic");
-        return ret;
+        GglBumpAlloc call_alloc
+            = ggl_bump_alloc_init(GGL_BUF((uint8_t[128]) { 0 }));
+        GglObject result = GGL_OBJ_NULL();
+        ggl_aws_iot_call(topic, payload_object, &call_alloc.alloc, &result);
+        if (ret != GGL_ERR_OK) {
+            GGL_LOGE("Failed to publish on update job topic");
+            return ret;
+        }
     }
     ++(*version);
 
     // save jobs ID and version to config in case of bootstrap
-    ret = save_iot_jobs_id(job_id);
+    GglError ret = save_iot_jobs_id(job_id);
     if (ret != GGL_ERR_OK) {
         GGL_LOGE("Failed to save job ID to config.");
         return ret;
@@ -257,7 +261,7 @@ static GglError describe_next_job(void *ctx) {
 
     GglBumpAlloc call_alloc = ggl_bump_alloc_init(GGL_BUF(response_scratch));
     GglObject job_description = GGL_OBJ_NULL();
-    ggl_aws_iot_call(
+    ret = ggl_aws_iot_call(
         topic, payload_object, &call_alloc.alloc, &job_description
     );
     if (ret != GGL_ERR_OK) {
